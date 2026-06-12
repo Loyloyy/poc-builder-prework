@@ -14,8 +14,8 @@ NAME="poc-prework-manual-$(date +%s)"
 
 RUNTIME_FLAG=()
 if [[ "$RUNTIME" == "kata" ]]; then
-  # VERIFY the registered runtime name: `docker info | grep -iA3 runtimes`
-  RUNTIME_FLAG=(--runtime io.containerd.kata.v2)
+  # Named runtime in daemon.json (default runtime stays runc). VERIFY: `docker info | grep -iA3 runtimes`
+  RUNTIME_FLAG=(--runtime kata)
 fi
 
 echo "Building workspace image ($IMAGE) if needed..."

@@ -34,8 +34,10 @@ class ExecResult:
 
 def _runtime_flag(runtime: str) -> list[str]:
     if runtime == "kata":
-        # VERIFY the registered name with `docker info | grep -iA3 runtimes`.
-        return ["--runtime", "io.containerd.kata.v2"]
+        # The runtime NAME as registered in /etc/docker/daemon.json (a named runtime, so the
+        # daemon's DEFAULT runtime is untouched). On this server that's "kata"; VERIFY with
+        # `docker info | grep -iA3 runtimes`.
+        return ["--runtime", "kata"]
     return []  # docker default (runc)
 
 

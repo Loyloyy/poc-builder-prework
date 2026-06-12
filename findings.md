@@ -34,14 +34,16 @@ the scaffold (versions, commands, API paths, model strings).
 - DSPy + GEPA loop: what it ingests, what `evolve_skill` mutates, eval signal:
 
 ## Metrics table
-| task | model    | runtime | iters-to-pass | success rate | wall-clock (s) | tokens (in/out) | cost ($) |
-|------|----------|---------|---------------|--------------|----------------|-----------------|----------|
-| T1   | frontier | docker  |               |              |                |                 |          |
-| T2   | frontier | docker  |               |              |                |                 |          |
-| T1   | frontier | kata    |               |              |                |                 |          |
-| T2   | frontier | kata    |               |              |                |                 |          |
-| T1   | vLLM     | kata    |               |              |                |                 |          |
-| T2   | vLLM     | kata    |               |              |                |                 |          |
+(Model kept generic here — real served id/host live only in the gitignored .env / traces.)
+| task   | model      | runtime | iters-to-pass | success rate | wall-clock (s) | tokens (in/out) | cost ($) |
+|--------|------------|---------|---------------|--------------|----------------|-----------------|----------|
+| t1     | GLM (open) | docker  | 1             | TBD          | 44.8           | 7585 / 17       | 0.00     |
+| t2     | GLM (open) | docker  | 1             | TBD          | 18.2           | 7525 / 112      | 0.00     |
+| repair | GLM (open) | docker  | 2             | TBD          | 10.2           | 13764 / 76      | 0.00     |
+| t1     | GLM (open) | kata    |               |              |                |                 |          |
+| t2     | GLM (open) | kata    |               |              |                |                 |          |
+| repair | GLM (open) | kata    |               |              |                |                 |          |
+| (opt)  | frontier   | kata    |               |              |                |                 |          |
 
 ## Verdict
 - **OpenCode as a headless build engine** — does it hold up? (reliability, API friction, gotchas)
