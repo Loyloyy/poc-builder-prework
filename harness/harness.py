@@ -38,6 +38,12 @@ TASKS = {
     "t2": ("t2_fastapi", "app.py", "test_health.py"),
 }
 
+# OpenCode's bash/webfetch tools run on the SERVE HOST, not our container — so we disable them
+# and keep the agent to file edits; the harness does ALL verification (pytest) in the container.
+# NOTE: this is why T2's "agent installs deps in the container" needs a follow-up (run the agent's
+# execution INSIDE the container) — tracked in README. T1 is file-edit-only and works as-is.
+AGENT_TOOLS = {"bash": False, "webfetch": False}
+
 
 def provision(task: str, cfg: Config) -> Path:
     """Copy the task fixture into a fresh per-run workspace directory on the host."""
@@ -64,10 +70,9 @@ def build_spec_context(workspace: Path, task: str) -> str:
 def build_instruction(workspace: Path, task: str) -> str:
     folder, stub, test_file = TASKS[task]
     return (
-        f"Working directory: {workspace}\n"
-        f"Make `python -m pytest -q` pass. Edit ONLY `{stub}` (and add dependencies if the "
-        f"test needs them). Do NOT modify `{test_file}`. Keep the solution minimal and "
-        f"stdlib-first. When done, the tests must pass."
+        f"Read `SPEC.md` and the test file `{test_file}` in this directory, then make "
+        f"`python -m pytest -q` pass by editing ONLY `{stub}` (install dependencies if the test "
+        f"needs them). Do NOT modify `{test_file}`. Keep it minimal and stdlib-first."
     )
 
 
@@ -91,18 +96,21 @@ def run_task(task: str, cfg: Config) -> RunTrace:
         password=cfg.opencode_password,
         provider_id=cfg.opencode_provider_id,
         model=cfg.harness_model,
+        agent=cfg.opencode_agent or None,
     )
 
     try:
-        sid = client.create_session(title=f"poc-prework-{task}", directory=str(workspace))
-        client.send_context(sid, build_spec_context(workspace, task))
+        wsdir = str(workspace)
+        sid = client.create_session(directory=wsdir)
+        client.send_context(sid, build_spec_context(workspace, task), directory=wsdir)
 
         with Workspace(workspace, cfg.workspace_image, runtime=cfg.runtime) as ws:
             instruction = build_instruction(workspace, task)
             for n in range(1, cfg.max_iters + 1):
                 kind = "build" if n == 1 else "repair"
                 t0 = time.time()
-                usage = client.send_instruction(sid, instruction)
+                usage = client.send_instruction(sid, instruction, directory=wsdir,
+                                                 tools=AGENT_TOOLS)
                 result = ws.run_pytest()
                 it = IterationTrace(
                     n=n, kind=kind, instruction=instruction,

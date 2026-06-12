@@ -21,12 +21,10 @@ from harness.opencode_client import EP, OpenCodeClient  # noqa: E402
 
 def assumed_paths() -> list[str]:
     # Normalise {sid} -> a path-template form for comparison with the spec's path keys.
-    out = []
-    for name in dir(EP):
-        if name.isupper():
-            val = getattr(EP, name)
-            out.append(re.sub(r"\{sid\}", "{id}", val))
-    return sorted(set(out))
+    # EP paths now use the real {sessionID} param name, matching the spec keys exactly.
+    # DOC is the meta endpoint we ALREADY used to fetch the spec (specs don't list themselves),
+    # so skip it — a MISS there is a false alarm.
+    return sorted({getattr(EP, n) for n in dir(EP) if n.isupper() and n != "DOC"})
 
 
 def main() -> int:

@@ -1,40 +1,37 @@
 """HTTP client for driving OpenCode headlessly (the `opencode serve` server).
 
-╔══════════════════════════════════════════════════════════════════════════════════╗
-║  ⚠️  VERIFY AGAINST  GET /doc  BEFORE TRUSTING ANYTHING IN THIS FILE.            ║
-║                                                                                  ║
-║  Every endpoint path and payload shape below is written from early-2026          ║
-║  knowledge of OpenCode and WILL drift. The running server's OpenAPI spec at      ║
-║  GET /doc is the ground truth. Run `python scripts/verify_openapi.py` first; it  ║
-║  diffs the EP constants here against the live spec and tells you what to fix.    ║
-║                                                                                  ║
-║  When reality differs: change ONLY the EP table + the (un)wrap helpers below.    ║
-║  The rest of the harness depends on this module's method contract, not on paths. ║
-╚══════════════════════════════════════════════════════════════════════════════════╝
+Reconciled against the LIVE /doc of OpenCode 1.15.13 (saved at docs/openapi.json). Key facts:
+  * Session create (POST /session): body {model:{id, providerID}, agent?}; the working dir is
+    a QUERY param `?directory=<abs>` (NOT a body field — body has additionalProperties:false).
+  * Send (POST /session/{sessionID}/message) is SYNCHRONOUS — it blocks and returns the
+    completed assistant turn {info, parts}, with info.tokens {input,output,...} + info.cost +
+    info.error?. No polling needed. Body: {parts:[{type:"text",text}], noReply?:bool}.
+    (model is inherited from the session; per-message model would use {providerID, modelID}.)
+  * `noReply: true` injects context without driving a full reply.
+
+If a future OpenCode changes this, re-run scripts/verify_openapi.py and the schema dump in the
+README, then adjust the EP table + bodies below.
 """
 
 from __future__ import annotations
 
 import json as _json
-import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 
 # Stdlib-only on purpose: the harness host needs ZERO pip installs (no httpx, no venv).
-# Only system python3 + the docker CLI are required on the host.
 
 
 # ---------------------------------------------------------------------------
-# ENDPOINT TABLE — the ONLY place to edit when /doc disagrees. {sid} = session id.
+# ENDPOINT TABLE — the place to edit if /doc disagrees. {sessionID} is substituted.
 # ---------------------------------------------------------------------------
 class EP:
-    DOC = "/doc"                              # OpenAPI spec (ground truth)
-    SESSION_CREATE = "/session"              # POST -> {"id": ...}
-    SESSION_LIST = "/session"               # GET
-    MESSAGE_SEND = "/session/{sid}/message"  # POST a prompt (parts + provider/model)
-    MESSAGE_LIST = "/session/{sid}/message"  # GET conversation (assistant replies, usage)
-    SESSION_ABORT = "/session/{sid}/abort"   # POST cancel an in-flight run (best effort)
+    DOC = "/doc"                                       # OpenAPI spec (ground truth)
+    SESSION = "/session"                               # POST create, GET list
+    MESSAGE = "/session/{sessionID}/message"           # POST send (synchronous), GET list
+    ABORT = "/session/{sessionID}/abort"               # POST cancel (best effort)
 
 
 @dataclass
@@ -49,26 +46,21 @@ class OpenCodeError(RuntimeError):
 
 
 class OpenCodeClient:
-    """Thin wrapper. Auth via the server password (header below — VERIFY the scheme:
-    some builds use Authorization: Bearer, others a custom header or basic auth)."""
-
     def __init__(self, base_url: str, password: str, provider_id: str, model: str,
-                 timeout_s: float = 300.0):
+                 agent: str | None = None, timeout_s: float = 600.0):
         self._base = base_url.rstrip("/")
         self._provider_id = provider_id
         self._model = model
+        self._agent = agent or None
         self._timeout = timeout_s
-        # A normal loopback `opencode serve` needs NO auth, so headers carry no password unless
-        # you set one (only relevant if you bound the server to a non-loopback address). If you
-        # do, VERIFY the scheme against /doc — these two variants are a guess.
+        # A normal loopback `opencode serve` needs no auth; headers carry a password only if set.
         self._headers = {"Content-Type": "application/json"}
         if password:
             self._headers["Authorization"] = f"Bearer {password}"
             self._headers["x-opencode-password"] = password
 
-    # ---- lifecycle -------------------------------------------------------
     def close(self) -> None:
-        pass  # urllib opens per-request; nothing to close
+        pass  # urllib opens per-request
 
     def __enter__(self) -> "OpenCodeClient":
         return self
@@ -76,142 +68,94 @@ class OpenCodeClient:
     def __exit__(self, *exc) -> None:
         self.close()
 
-    # ---- low-level (stdlib urllib; no third-party deps) ------------------
-    def _request(self, method: str, path: str, body: dict | None = None) -> dict | list:
+    # ---- low-level (stdlib urllib) --------------------------------------
+    def _request(self, method: str, path: str, body: dict | None = None,
+                 query: dict | None = None) -> dict | list:
+        url = self._base + path
+        if query:
+            qs = urllib.parse.urlencode({k: v for k, v in query.items() if v})
+            if qs:
+                url += "?" + qs
         data = _json.dumps(body).encode() if body is not None else None
-        req = urllib.request.Request(self._base + path, data=data, method=method,
-                                     headers=self._headers)
+        req = urllib.request.Request(url, data=data, method=method, headers=self._headers)
         try:
             with urllib.request.urlopen(req, timeout=self._timeout) as resp:
                 raw = resp.read()
         except urllib.error.HTTPError as e:
-            detail = e.read().decode(errors="replace")[:500]
-            raise OpenCodeError(f"{method} {path} -> {e.code}: {detail}")
+            raise OpenCodeError(
+                f"{method} {path} -> {e.code}: {e.read().decode(errors='replace')[:600]}")
         except urllib.error.URLError as e:
             raise OpenCodeError(f"{method} {path} -> connection error: {e.reason}")
         return _json.loads(raw) if raw else {}
 
-    def _post(self, path: str, json: dict | None = None) -> dict:
-        return self._request("POST", path, json or {})  # type: ignore[return-value]
-
-    def _get(self, path: str) -> dict | list:
-        return self._request("GET", path)
-
     # ---- ops the harness relies on --------------------------------------
     def health(self) -> dict:
-        """Server reachable + OpenAPI present. Returns minimal info from /doc."""
-        spec = self._get(EP.DOC)
+        spec = self._request("GET", EP.DOC)
         info = spec.get("info", {}) if isinstance(spec, dict) else {}
-        return {"ok": True, "openapi_title": info.get("title"), "version": info.get("version")}
+        return {"ok": True, "title": info.get("title"), "version": info.get("version")}
 
     def fetch_openapi(self) -> dict:
-        spec = self._get(EP.DOC)
+        spec = self._request("GET", EP.DOC)
         if not isinstance(spec, dict):
             raise OpenCodeError("/doc did not return a JSON object")
         return spec
 
-    def create_session(self, title: str = "poc-prework", directory: str | None = None) -> str:
-        # VERIFY: body keys + id field name. `directory` ties the session to the per-run
-        # workspace so the agent edits THERE (the key may be "directory"/"path"/"cwd"). If the
-        # server ignores it, start `opencode serve` with the workspace as its cwd instead.
-        body: dict = {"title": title}
-        if directory:
-            body["directory"] = directory
-        data = self._post(EP.SESSION_CREATE, body)
-        sid = data.get("id") or data.get("sessionID") or data.get("session", {}).get("id")
+    def create_session(self, directory: str | None = None) -> str:
+        """Create a session bound to our model (+ optional scoped agent), scoped to `directory`
+        via ?directory= so the agent operates on the per-run workspace."""
+        body: dict = {"model": {"id": self._model, "providerID": self._provider_id}}
+        if self._agent:
+            body["agent"] = self._agent
+        data = self._request("POST", EP.SESSION, body=body, query={"directory": directory})
+        sid = data.get("id") if isinstance(data, dict) else None
         if not sid:
-            raise OpenCodeError(f"could not find session id in create response: {data!r}")
+            raise OpenCodeError(f"no session id in create response: {data!r}")
         return sid
 
-    def send_context(self, sid: str, context: str) -> None:
-        """Inject reference context that should NOT trigger a build action — a 'no-reply'
-        framing. OpenCode has no true no-reply, so we prefix an instruction telling the
-        model to acknowledge only. The build instruction comes next via send_instruction."""
-        self._send(sid, (
-            "CONTEXT ONLY — do not edit files or run commands yet. "
-            "Acknowledge in one word. Here is the reference material:\n\n" + context
-        ))
+    def send_context(self, sid: str, context: str, directory: str | None = None) -> None:
+        """Inject reference material WITHOUT driving a build (noReply=true). Best-effort: the
+        agent can also read the files directly from the workspace, so this is a convenience."""
+        try:
+            self._send(sid, context, directory=directory, no_reply=True)
+        except OpenCodeError:
+            pass
 
-    def send_instruction(self, sid: str, instruction: str) -> Usage:
-        """Send a build/repair instruction and block until the assistant turn completes.
-        Returns token/cost usage for THIS turn (best-effort parse)."""
-        before = self._message_count(sid)
-        self._send(sid, instruction)
-        return self._await_turn(sid, since_count=before)
+    def send_instruction(self, sid: str, instruction: str, directory: str | None = None,
+                         tools: dict | None = None) -> Usage:
+        """Send a build/repair instruction. The POST blocks until the turn completes and returns
+        the assistant message; we surface its token/cost usage and raise on a turn error.
+        `tools` (e.g. {"bash": False}) disables OpenCode tools for this turn — important because
+        OpenCode's bash runs on the SERVE HOST, not in our container; for file-only tasks we keep
+        the agent to edits and let the harness verify in the container."""
+        resp = self._send(sid, instruction, directory=directory, no_reply=False, tools=tools)
+        info = resp.get("info", {}) if isinstance(resp, dict) else {}
+        if info.get("error"):
+            raise OpenCodeError(f"assistant turn errored: {_json.dumps(info['error'])[:400]}")
+        return _usage(info)
 
     def abort(self, sid: str) -> None:
         try:
-            self._post(EP.SESSION_ABORT.format(sid=sid))
+            self._request("POST", EP.ABORT.format(sessionID=sid))
         except OpenCodeError:
-            pass  # best effort
+            pass
 
     # ---- internals -------------------------------------------------------
-    def _send(self, sid: str, text: str) -> None:
-        # VERIFY: the message body schema. Common OpenCode shape is a parts array plus
-        # explicit provider/model routing. Adjust keys here to match /doc.
-        body = {
-            "providerID": self._provider_id,
-            "modelID": self._model,
-            "parts": [{"type": "text", "text": text}],
-        }
-        self._post(EP.MESSAGE_SEND.format(sid=sid), body)
-
-    def _messages(self, sid: str) -> list:
-        data = self._get(EP.MESSAGE_LIST.format(sid=sid))
-        if isinstance(data, dict):
-            data = data.get("messages") or data.get("data") or []
-        return data if isinstance(data, list) else []
-
-    def _message_count(self, sid: str) -> int:
-        return len(self._messages(sid))
-
-    def _await_turn(self, sid: str, since_count: int, poll_s: float = 2.0,
-                    max_wait_s: float = 600.0) -> Usage:
-        """Poll until a new assistant message appears AND it is no longer streaming.
-
-        VERIFY: how completion is signalled. Candidates seen in the wild: a `time.completed`
-        timestamp on the assistant message, a `status`/`finishReason` field, or the SSE
-        /event stream. Polling the message list is the most version-robust; swap to SSE if
-        /doc exposes it cleanly. We treat 'a new assistant message with usage present and
-        no streaming flag' as done."""
-        deadline = time.time() + max_wait_s
-        while time.time() < deadline:
-            msgs = self._messages(sid)
-            new = msgs[since_count:]
-            assistant = [m for m in new if _role(m) == "assistant"]
-            done = [m for m in assistant if _turn_complete(m)]
-            if done:
-                return _parse_usage(done[-1])
-            time.sleep(poll_s)
-        raise OpenCodeError(f"timed out after {max_wait_s}s waiting for assistant turn on {sid}")
+    def _send(self, sid: str, text: str, directory: str | None = None,
+              no_reply: bool = False, tools: dict | None = None) -> dict:
+        body: dict = {"parts": [{"type": "text", "text": text}]}
+        if no_reply:
+            body["noReply"] = True
+        if tools:
+            body["tools"] = tools
+        out = self._request("POST", EP.MESSAGE.format(sessionID=sid),
+                            body=body, query={"directory": directory})
+        return out if isinstance(out, dict) else {}
 
 
-# ---- response-shape helpers (also VERIFY against /doc) ---------------------
-def _role(msg: dict) -> str:
-    return (msg.get("role") or msg.get("info", {}).get("role") or "").lower()
-
-
-def _turn_complete(msg: dict) -> bool:
-    info = msg.get("info", msg)
-    if info.get("finishReason") or info.get("finish_reason"):
-        return True
-    t = info.get("time") or {}
-    if isinstance(t, dict) and t.get("completed"):
-        return True
-    if info.get("status") in {"completed", "done", "idle"}:
-        return True
-    # Fall back: presence of usage usually means the turn closed.
-    return bool(_raw_usage(info))
-
-
-def _raw_usage(msg: dict) -> dict:
-    info = msg.get("info", msg)
-    return info.get("usage") or info.get("tokens") or {}
-
-
-def _parse_usage(msg: dict) -> Usage:
-    u = _raw_usage(msg)
-    tin = int(u.get("input") or u.get("prompt_tokens") or u.get("input_tokens") or 0)
-    tout = int(u.get("output") or u.get("completion_tokens") or u.get("output_tokens") or 0)
-    cost = float(u.get("cost") or (msg.get("info", msg).get("cost")) or 0.0)
-    return Usage(tokens_in=tin, tokens_out=tout, cost_usd=cost)
+def _usage(info: dict) -> Usage:
+    t = info.get("tokens", {}) or {}
+    return Usage(
+        tokens_in=int(t.get("input", 0) or 0),
+        tokens_out=int(t.get("output", 0) or 0),
+        cost_usd=float(info.get("cost", 0.0) or 0.0),
+    )

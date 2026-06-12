@@ -30,6 +30,13 @@ and payload/response shapes sit behind one banner in `opencode_client.py`; `scri
 diffs them against the spec before any run. On drift, edit only that file. We do NOT pretend the
 client is proven.
 
+UPDATE 2026-06-12 — RECONCILED against the live OpenCode **1.15.13** /doc on the server. Confirmed:
+session create takes `model:{id,providerID}` + optional `agent`, working dir is the `?directory=`
+QUERY param (not a body field); `POST /session/{sessionID}/message` is SYNCHRONOUS and returns the
+completed turn `{info,parts}` with `info.tokens`/`info.cost`, so the polling loop was DELETED;
+`noReply:true` is the real context-injection flag. Headless tool prompts avoided via a `permission`
+block in opencode.json (edit/bash allow, webfetch deny) rather than per-session permission payloads.
+
 ## D5 — Sandbox: Docker now, Kata via one flag (Phase 3)
 The build engine runs arbitrary code, so verification always runs in a container (`runtime.py`),
 never on the host. The docker→kata switch is a single runtime flag (`_runtime_flag`) so Phase 3 is
