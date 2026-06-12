@@ -45,6 +45,11 @@ TASKS = {
     # Harness stress test: a trap-laden arithmetic evaluator (precedence/associativity/unary/
     # errors). Pure stdlib, deterministic, visible test. Exercises code-well + fix-well on real bugs.
     "calc": {"folder": "calc_eval", "stub": "calc.py", "test": "test_calc.py", "hidden": False},
+    # Working-POC stress test: a small multi-endpoint URL-shortener service. Integration surface
+    # (routing, 307 redirect, 404, validation, state) + harness-managed deps — where iteration
+    # appears naturally if anywhere.
+    "urlshort": {"folder": "url_shortener", "stub": "app.py", "test": "test_app.py",
+                 "hidden": False},
 }
 
 # OpenCode's bash/webfetch run on the SERVE HOST, not our container — so we disable them and keep

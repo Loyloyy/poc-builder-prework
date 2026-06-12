@@ -1,0 +1,4 @@
+# Installed by the harness in the sandbox before testing. httpx is included (TestClient needs it),
+# so this task tests APP-LOGIC iteration, not dependency-hell (that's t2's job).
+fastapi
+httpx
