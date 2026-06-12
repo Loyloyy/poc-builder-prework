@@ -19,6 +19,7 @@ until `scripts/verify_openapi.py` passes against the live /doc.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import shutil
 import sys
 import time
@@ -38,10 +39,10 @@ TASKS = {
     "t2": ("t2_fastapi", "app.py", "test_health.py"),
 }
 
-# OpenCode's bash/webfetch tools run on the SERVE HOST, not our container — so we disable them
-# and keep the agent to file edits; the harness does ALL verification (pytest) in the container.
-# NOTE: this is why T2's "agent installs deps in the container" needs a follow-up (run the agent's
-# execution INSIDE the container) — tracked in README. T1 is file-edit-only and works as-is.
+# OpenCode's bash/webfetch run on the SERVE HOST, not our container — so we disable them and keep
+# the agent to FILE EDITS only. The harness owns the sandbox: it installs requirements.txt and runs
+# pytest in the container. T2's deps are thus ADDED BY THE AGENT to requirements.txt (an edit) and
+# INSTALLED BY THE HARNESS — no host execution, matching the poc-foundry broker model.
 AGENT_TOOLS = {"bash": False, "webfetch": False}
 
 
@@ -68,11 +69,17 @@ def build_spec_context(workspace: Path, task: str) -> str:
 
 
 def build_instruction(workspace: Path, task: str) -> str:
-    folder, stub, test_file = TASKS[task]
+    _, stub, test_file = TASKS[task]
+    reqs = (workspace / "requirements.txt").exists()
+    editable = f"`{stub}`" + (" and `requirements.txt`" if reqs else "")
+    dep_line = (
+        " To add a Python package, put it in `requirements.txt` (the harness installs it in the "
+        "sandbox before testing) — do NOT run shell commands yourself." if reqs else ""
+    )
     return (
         f"Read `SPEC.md` and the test file `{test_file}` in this directory, then make "
-        f"`python -m pytest -q` pass by editing ONLY `{stub}` (install dependencies if the test "
-        f"needs them). Do NOT modify `{test_file}`. Keep it minimal and stdlib-first."
+        f"`python -m pytest -q` pass by editing {editable}. Do NOT modify `{test_file}`."
+        f"{dep_line} Keep it minimal and stdlib-first."
     )
 
 
@@ -106,20 +113,31 @@ def run_task(task: str, cfg: Config) -> RunTrace:
 
         with Workspace(workspace, cfg.workspace_image, runtime=cfg.runtime) as ws:
             instruction = build_instruction(workspace, task)
+            baseline = _snapshot(workspace)   # content hashes, to detect what the agent edits
             for n in range(1, cfg.max_iters + 1):
                 kind = "build" if n == 1 else "repair"
                 t0 = time.time()
                 usage = client.send_instruction(sid, instruction, directory=wsdir,
                                                  tools=AGENT_TOOLS)
-                result = ws.run_pytest()
+                # diff BEFORE running pytest so we don't attribute .pytest_cache to the agent
+                cur = _snapshot(workspace)
+                touched = sorted(f for f, h in cur.items() if baseline.get(f) != h)
+                baseline = cur
+                # Harness owns the sandbox: install the task's deps (if any) in the container,
+                # then verify. A pip failure surfaces in the same output and drives a repair.
+                if (workspace / "requirements.txt").exists():
+                    result = ws.exec("pip install -q -r requirements.txt && python -m pytest -q")
+                else:
+                    result = ws.run_pytest()
                 it = IterationTrace(
                     n=n, kind=kind, instruction=instruction,
-                    files_touched=_changed_files(workspace),
+                    files_touched=touched,
                     test_rc=result.rc,
                     test_stdout_tail=_tail(result.stdout + result.stderr),
                     failing_summary=_summarize_failures(result.stdout + result.stderr)
                         if result.rc != 0 else "",
                     tokens_in=usage.tokens_in, tokens_out=usage.tokens_out,
+                    tokens_reasoning=usage.tokens_reasoning,
                     cost_usd=usage.cost_usd, wall_s=round(time.time() - t0, 3),
                 )
                 trace.add(it)
@@ -150,15 +168,18 @@ def run_task(task: str, cfg: Config) -> RunTrace:
     return trace
 
 
-def _changed_files(workspace: Path) -> list[str]:
-    """Best-effort: files modified in the last 10 minutes, relative to workspace.
-    (No git in the throwaway workspace; mtime is good enough for the trace.)"""
-    cutoff = time.time() - 600
-    out = []
-    for p in sorted(workspace.rglob("*")):
-        if p.is_file() and p.stat().st_mtime >= cutoff and "__pycache__" not in p.parts:
-            out.append(str(p.relative_to(workspace)))
-    return out
+_SNAPSHOT_SKIP = {".pytest_cache", "__pycache__", ".git"}
+
+
+def _snapshot(workspace: Path) -> dict[str, str]:
+    """Map of relpath -> content sha1, so we can report exactly which files the agent changed
+    (excludes test-cache / vcs noise). Diffing two snapshots gives an honest files_touched."""
+    snap: dict[str, str] = {}
+    for p in workspace.rglob("*"):
+        rel = p.relative_to(workspace)
+        if p.is_file() and not (set(rel.parts) & _SNAPSHOT_SKIP):
+            snap[str(rel)] = hashlib.sha1(p.read_bytes()).hexdigest()
+    return snap
 
 
 def _summarize_failures(output: str) -> str:

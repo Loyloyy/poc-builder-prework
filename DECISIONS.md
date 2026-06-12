@@ -55,6 +55,17 @@ tokens, cost; plus `final_status` + `iterations_to_pass`). This is what Phase 4 
 Hermes' expected trace input to answer the trace-adapter question. `green` + `iterations_to_pass`
 doubles as a natural reward signal.
 
+## D10 — Harness-managed sandbox env for T2 (user ruling 2026-06-12, post-T1-green)
+OpenCode's bash runs on the SERVE HOST, not our container, so the agent does NOT execute anything.
+Clean split (and matches the poc-foundry broker model): the **agent only edits files** (incl.
+`requirements.txt`); the **harness installs deps + runs pytest in the container**. Chosen over
+running `opencode serve` inside the container (heavier; OpenCode in the image + model reachability).
+T2 repair trigger is realistic, not contrived: `requirements.txt` ships `fastapi` only, but
+`fastapi.testclient` needs `httpx`; since the agent can't run tests (bash off) it usually only
+learns this from the harness's failure → adds `httpx` → repair passes. Requires the workspace
+container to reach PyPI (egress); if blocked on the server, fall back to pre-baked wheels
+(docker/Dockerfile.workspace) + `--network none`.
+
 ## D9 — Stdlib-only harness host: no pip, no venv (user ruling 2026-06-12)
 The user wants nothing installed on the host (no pip/venv) — only docker/kata. The single host-side
 dependency was `httpx` in the OpenCode client; replaced with stdlib `urllib`. Result: the harness runs

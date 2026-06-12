@@ -23,6 +23,7 @@ class IterationTrace:
     failing_summary: str = ""       # short human summary of failures fed into the next repair
     tokens_in: int = 0
     tokens_out: int = 0
+    tokens_reasoning: int = 0
     cost_usd: float = 0.0
     wall_s: float = 0.0
 
@@ -41,6 +42,7 @@ class RunTrace:
     iterations_to_pass: int | None = None
     total_tokens_in: int = 0
     total_tokens_out: int = 0
+    total_tokens_reasoning: int = 0
     total_cost_usd: float = 0.0
     total_wall_s: float = 0.0
 
@@ -52,6 +54,7 @@ class RunTrace:
         self.error = error
         self.total_tokens_in = sum(i.tokens_in for i in self.iterations)
         self.total_tokens_out = sum(i.tokens_out for i in self.iterations)
+        self.total_tokens_reasoning = sum(i.tokens_reasoning for i in self.iterations)
         self.total_cost_usd = round(sum(i.cost_usd for i in self.iterations), 6)
         self.total_wall_s = round(sum(i.wall_s for i in self.iterations), 3)
         if status == "green" and self.iterations:

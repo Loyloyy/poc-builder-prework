@@ -1,4 +1,5 @@
-# The agent installs these inside the workspace container (Phase 2 rehearses dependency hell).
-# httpx is required by fastapi.testclient as its transport.
+# The harness installs this in the workspace container before running the test (Phase 2).
+# NOTE: fastapi.testclient also needs `httpx` as its transport — it is intentionally MISSING
+# here, so the first test run fails on a missing dependency. The agent must add `httpx` to
+# requirements.txt to make the repair pass (rehearses dependency hell + the repair loop).
 fastapi
-httpx

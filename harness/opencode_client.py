@@ -38,6 +38,7 @@ class EP:
 class Usage:
     tokens_in: int = 0
     tokens_out: int = 0
+    tokens_reasoning: int = 0    # reasoning models (e.g. GLM) put most output here
     cost_usd: float = 0.0
 
 
@@ -157,5 +158,6 @@ def _usage(info: dict) -> Usage:
     return Usage(
         tokens_in=int(t.get("input", 0) or 0),
         tokens_out=int(t.get("output", 0) or 0),
+        tokens_reasoning=int(t.get("reasoning", 0) or 0),
         cost_usd=float(info.get("cost", 0.0) or 0.0),
     )
