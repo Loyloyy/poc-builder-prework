@@ -1,0 +1,26 @@
+[project]
+name = "poc-builder-prework"
+version = "0.1.0"
+description = "Stage-3 pre-work: validate OpenCode-as-build-engine + a build/verify/repair harness in isolation."
+requires-python = ">=3.11"   # server runtime; the local authoring box is 3.10 and does NOT run this
+dependencies = [
+    "httpx>=0.27",           # OpenCode OpenAPI client + model-endpoint smoke test
+]
+
+[project.optional-dependencies]
+# Installed INSIDE the workspace container for Task T2's verification, not on the harness host.
+t2 = [
+    "fastapi>=0.110",
+    "httpx>=0.27",           # fastapi TestClient transport
+]
+dev = [
+    "pytest>=8",
+    "ruff>=0.5",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+addopts = "-q"

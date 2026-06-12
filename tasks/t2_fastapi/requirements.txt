@@ -1,0 +1,4 @@
+# The agent installs these inside the workspace container (Phase 2 rehearses dependency hell).
+# httpx is required by fastapi.testclient as its transport.
+fastapi
+httpx

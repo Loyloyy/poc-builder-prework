@@ -1,0 +1,20 @@
+# Clean Python workspace the build engine targets. NO task deps preinstalled — the agent
+# installs what each task needs (Phase 2 rehearses dependency hell). pytest is present so the
+# verification gate can always run.
+#
+# Guardrail note on egress: the strict reading of "deny general network egress" wants
+# `--network none` at run time (see harness/runtime.py). To honour that for Phase 2's
+# `pip install`, pre-bake the T2 wheels into the image here, then flip
+# Workspace(allow_egress_for_install=False). Until then we allow egress for installs only.
+FROM python:3.11-slim
+
+# pytest = the verification gate; pip/setuptools current so the agent can install deps.
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && pip install --no-cache-dir pytest
+
+# OPTIONAL (strict no-egress Phase 2): pre-fetch T2 deps so the agent installs offline.
+# Uncomment, then run the container with --network none.
+# RUN pip download --dest /wheels fastapi httpx
+
+WORKDIR /work
+CMD ["sleep", "infinity"]
