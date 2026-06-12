@@ -9,8 +9,24 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Load .env (MODEL_*, OPENCODE_*).
-set -a; [[ -f .env ]] && . ./.env; set +a
+# Load .env WITHOUT sourcing it — values can contain <>, /, spaces etc. that break `source`.
+load_env() {
+  [[ -f "$1" ]] || return 0
+  local line key val
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"                              # tolerate CRLF
+    [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue   # skip comments / blanks
+    [[ "$line" != *=* ]] && continue
+    key="${line%%=*}"; val="${line#*=}"
+    key="${key//[[:space:]]/}"                         # trim whitespace in key
+    case "$val" in *" #"*) val="${val%% #*}";; esac    # strip inline ' #...' comment
+    val="${val#"${val%%[![:space:]]*}"}"               # ltrim value
+    val="${val%"${val##*[![:space:]]}"}"               # rtrim value
+    val="${val%\"}"; val="${val#\"}"; val="${val%\'}"; val="${val#\'}"  # unquote
+    [[ -n "$key" ]] && export "$key=$val"
+  done < "$1"
+}
+load_env .env
 : "${OPENCODE_PORT:=4096}" "${OPENCODE_HOST:=127.0.0.1}"
 
 echo "== 1. Install OpenCode (VERIFY current install method vs docs) =="

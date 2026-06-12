@@ -18,6 +18,9 @@ def _load_dotenv(path: Path) -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, val = line.partition("=")
+        # strip an inline ' #...' comment (only when ' #' appears), then whitespace + quotes
+        if " #" in val:
+            val = val.split(" #", 1)[0]
         key, val = key.strip(), val.strip().strip('"').strip("'")
         os.environ.setdefault(key, val)
 
