@@ -199,7 +199,8 @@ def run_task(task: str, cfg: Config) -> RunTrace:
     return trace
 
 
-_SNAPSHOT_SKIP = {".pytest_cache", "__pycache__", ".git"}
+_SNAPSHOT_SKIP = {".pytest_cache", "__pycache__", ".git", "venv", ".venv", "node_modules",
+                  ".ruff_cache", ".mypy_cache"}
 
 
 def _snapshot(workspace: Path) -> dict[str, str]:

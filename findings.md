@@ -63,6 +63,19 @@ iterate/fix loop is a proven safety net but rarely needed there. The unsolved pr
 harness actually earns its keep — is ORCHESTRATION: decompose a goal → build increments → integrate →
 verify it RUNS → stay aligned to the goal. That (not single-component repair) is the next thing to build.
 
+**OUTER LOOP (orchestrator) — first run on `notes_api` (2026-06-12): VERDICT=done.** Architect produced
+a sensible 3-increment plan; integration gate held; the RUNNABLE gate genuinely launched `uvicorn` and
+probed `/health` (proving it serves, not just imports). Four real issues surfaced — the point of a probe:
+1. **Increment steps lacked gate feedback** → after a one-shot build in increment 1, increments 2–3 were
+   no-ops (`files_touched: []`); only the repair step (which feeds the error) fixed it. FIXED — increments
+   now carry the failing test output.
+2. **Dependency drift** → `starlette` went from *warning* to *hard-requiring* `httpx2` between runs (same
+   unpinned `requirements.txt`, different result). Reproducibility lesson → pin deps (poc-foundry: pin by SHA).
+3. **bash-disable was ineffective** → the agent created a `venv/` in the workspace, i.e. it ran shell on the
+   SERVE HOST (the thing we must prevent). FIXED — `opencode.json` now sets `bash: "deny"` (agent edits only;
+   the harness runs everything in the sandbox). Re-verify the agent still builds without host execution.
+4. **Snapshot noise** → `files_touched` included the venv; FIXED — snapshot now skips venv/node_modules/caches.
+
 ## Verdict
 - **OpenCode as a headless build engine — YES, it holds up.** Driven via a stdlib HTTP client
   (OpenCode 1.15.13), it edited only the intended files, respected "don't touch the test," and added

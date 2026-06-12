@@ -142,6 +142,10 @@ def run_goal(goal: str, cfg: Config) -> OrchestrationTrace:
                     f"`{run_cfg['stub']}` and `requirements.txt` as needed; do NOT edit `{test_file}`. "
                     f"Add packages to requirements.txt (the harness installs them in the sandbox)."
                 )
+                if result is not None and result.rc != 0:
+                    # carry the gate feedback into the increment, so the agent always has signal
+                    instr += (f"\n\nThe current test run is FAILING — fix this as part of this step:\n"
+                              f"```\n{_tail(result.stdout + result.stderr)}\n```")
                 result, it = _step(client, sid, wsdir, ws, workspace, n, f"build:{inc['name']}",
                                    instr, baseline)
                 baseline = _snapshot(workspace)
