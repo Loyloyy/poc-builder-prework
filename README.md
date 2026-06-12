@@ -60,8 +60,14 @@ The harness copies a task fixture into a fresh host directory under `HARNESS_WOR
 ## The tasks
 
 - **T1 `tasks/t1_roman/`** — implement `roman_to_int` (pure stdlib, deterministic, 5 asserts).
-- **T2 `tasks/t2_fastapi/`** — FastAPI `GET /health` → `{"status":"ok"}`; the agent installs deps
-  itself. The stub ships a **deliberately wrong import** so the repair loop is guaranteed to fire.
+  `python3 -m harness.harness --task t1`
+- **T2 `tasks/t2_fastapi/`** — FastAPI `GET /health` → `{"status":"ok"}`. The agent edits `app.py`
+  (fixing a deliberately wrong import) and adds deps to `requirements.txt`; the **harness installs
+  them + runs pytest in the container** (it owns the sandbox). `--task t2`
+- **`repair` `tasks/repair_demo/`** — implements `greet()` from SPEC **only**; the test is HIDDEN
+  from the agent (injected into the container at verify time, outside `/work`), so the first guess
+  can't match the exact wording → the repair loop **deterministically** fires and recovers in iter 2.
+  `--task repair`
 
 ## Output
 

@@ -35,8 +35,13 @@ TASKS_DIR = REPO_ROOT / "tasks"
 TRACES_DIR = REPO_ROOT / "traces"
 
 TASKS = {
-    "t1": ("t1_roman", "roman.py", "test_roman.py"),
-    "t2": ("t2_fastapi", "app.py", "test_health.py"),
+    "t1": {"folder": "t1_roman", "stub": "roman.py", "test": "test_roman.py", "hidden": False},
+    "t2": {"folder": "t2_fastapi", "stub": "app.py", "test": "test_health.py", "hidden": False},
+    # Repair-demo: the test is HIDDEN from the agent (it works from SPEC only). The agent's first
+    # guess can't match the exact wording the hidden test checks, so iter 1 fails deterministically
+    # and the repair loop recovers — proving the loop without contrived sabotage.
+    "repair": {"folder": "repair_demo", "stub": "greet.py", "test": "test_greet.py",
+               "hidden": True},
 }
 
 # OpenCode's bash/webfetch run on the SERVE HOST, not our container — so we disable them and keep
@@ -47,29 +52,40 @@ AGENT_TOOLS = {"bash": False, "webfetch": False}
 
 
 def provision(task: str, cfg: Config) -> Path:
-    """Copy the task fixture into a fresh per-run workspace directory on the host."""
-    folder, _, _ = TASKS[task]
-    src = TASKS_DIR / folder
+    """Copy the task fixture into a fresh per-run workspace directory on the host. For hidden-test
+    tasks the test file is EXCLUDED so the agent can't see it (the harness injects it at verify)."""
+    meta = TASKS[task]
+    src = TASKS_DIR / meta["folder"]
     dst = cfg.workspace_root / f"{task}_{int(time.time())}"
     if dst.exists():
         shutil.rmtree(dst)
-    shutil.copytree(src, dst)
+    ignore = shutil.ignore_patterns(meta["test"]) if meta["hidden"] else None
+    shutil.copytree(src, dst, ignore=ignore)
     return dst
 
 
 def build_spec_context(workspace: Path, task: str) -> str:
-    """The spec the agent sees = the failing test file + the one-line SPEC.md."""
-    _, _, test_file = TASKS[task]
+    """The spec the agent sees = SPEC.md, plus the failing test (unless the test is hidden)."""
+    meta = TASKS[task]
     spec = (workspace / "SPEC.md").read_text().strip()
-    test = (workspace / test_file).read_text()
+    if meta["hidden"]:
+        return f"# Spec\n{spec}\n"
+    test = (workspace / meta["test"]).read_text()
     return (
         f"# Spec\n{spec}\n\n"
-        f"# The failing test (do not edit it): {test_file}\n```python\n{test}\n```\n"
+        f"# The failing test (do not edit it): {meta['test']}\n```python\n{test}\n```\n"
     )
 
 
 def build_instruction(workspace: Path, task: str) -> str:
-    _, stub, test_file = TASKS[task]
+    meta = TASKS[task]
+    stub = meta["stub"]
+    if meta["hidden"]:
+        return (
+            f"Read `SPEC.md` in this directory and implement it by editing `{stub}`. There is a "
+            f"HIDDEN test you cannot see; the harness runs it and reports any failure for you to "
+            f"fix. Keep it minimal and stdlib-first."
+        )
     reqs = (workspace / "requirements.txt").exists()
     editable = f"`{stub}`" + (" and `requirements.txt`" if reqs else "")
     dep_line = (
@@ -77,8 +93,8 @@ def build_instruction(workspace: Path, task: str) -> str:
         "sandbox before testing) — do NOT run shell commands yourself." if reqs else ""
     )
     return (
-        f"Read `SPEC.md` and the test file `{test_file}` in this directory, then make "
-        f"`python -m pytest -q` pass by editing {editable}. Do NOT modify `{test_file}`."
+        f"Read `SPEC.md` and the test file `{meta['test']}` in this directory, then make "
+        f"`python -m pytest -q` pass by editing {editable}. Do NOT modify `{meta['test']}`."
         f"{dep_line} Keep it minimal and stdlib-first."
     )
 
@@ -111,6 +127,7 @@ def run_task(task: str, cfg: Config) -> RunTrace:
         sid = client.create_session(directory=wsdir)
         client.send_context(sid, build_spec_context(workspace, task), directory=wsdir)
 
+        meta = TASKS[task]
         with Workspace(workspace, cfg.workspace_image, runtime=cfg.runtime) as ws:
             instruction = build_instruction(workspace, task)
             baseline = _snapshot(workspace)   # content hashes, to detect what the agent edits
@@ -123,9 +140,15 @@ def run_task(task: str, cfg: Config) -> RunTrace:
                 cur = _snapshot(workspace)
                 touched = sorted(f for f, h in cur.items() if baseline.get(f) != h)
                 baseline = cur
-                # Harness owns the sandbox: install the task's deps (if any) in the container,
-                # then verify. A pip failure surfaces in the same output and drives a repair.
-                if (workspace / "requirements.txt").exists():
+                # Harness owns the sandbox & verification. For hidden-test tasks, inject the real
+                # test into /tmp (OUTSIDE /work so the agent never sees it via the bind mount) and
+                # run it against the agent's module on /work. Otherwise install deps + run pytest.
+                if meta["hidden"]:
+                    ws.copy_in(str(TASKS_DIR / meta["folder"] / meta["test"]),
+                               f"/tmp/{meta['test']}")
+                    result = ws.exec(
+                        f"cd /work && PYTHONPATH=/work python -m pytest /tmp/{meta['test']} -q")
+                elif (workspace / "requirements.txt").exists():
                     result = ws.exec("pip install -q -r requirements.txt && python -m pytest -q")
                 else:
                     result = ws.run_pytest()

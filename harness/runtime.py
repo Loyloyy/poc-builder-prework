@@ -91,6 +91,11 @@ class Workspace:
         """Verification gate. Exit 0 == green."""
         return self.exec("python -m pytest -q", timeout_s=timeout_s)
 
+    def copy_in(self, host_path: str, container_path: str) -> None:
+        """Copy a host file into the running container. Used to inject hidden tests at verify time
+        OUTSIDE /work, so the agent never sees them via the bind mount."""
+        _run(["docker", "cp", host_path, f"{self.name}:{container_path}"], check=True)
+
 
 def _run(cmd: list[str], check: bool, timeout_s: int = 600) -> ExecResult:
     try:
