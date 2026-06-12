@@ -42,6 +42,9 @@ TASKS = {
     # and the repair loop recovers — proving the loop without contrived sabotage.
     "repair": {"folder": "repair_demo", "stub": "greet.py", "test": "test_greet.py",
                "hidden": True},
+    # Harness stress test: a trap-laden arithmetic evaluator (precedence/associativity/unary/
+    # errors). Pure stdlib, deterministic, visible test. Exercises code-well + fix-well on real bugs.
+    "calc": {"folder": "calc_eval", "stub": "calc.py", "test": "test_calc.py", "hidden": False},
 }
 
 # OpenCode's bash/webfetch run on the SERVE HOST, not our container — so we disable them and keep
