@@ -70,7 +70,7 @@ def load_config() -> Config:
         model_api_base=_req("MODEL_API_BASE"),
         model_api_key=_req("MODEL_API_KEY"),
         harness_model=_req("HARNESS_MODEL"),
-        opencode_provider_id=os.environ.get("OPENCODE_PROVIDER_ID", "local").strip(),
+        opencode_provider_id=os.environ.get("OPENCODE_PROVIDER_ID", "vllm_api").strip(),
         opencode_host=os.environ.get("OPENCODE_HOST", "127.0.0.1").strip(),
         opencode_port=int(os.environ.get("OPENCODE_PORT", "4096")),
         opencode_password=_req("OPENCODE_SERVER_PASSWORD"),

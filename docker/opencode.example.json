@@ -1,16 +1,15 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "_comment": "VERIFY against the CURRENT OpenCode config docs — the provider schema drifts. Copy to ~/.config/opencode/opencode.json (global) or <project>/.opencode/opencode.json, fill in real values (that copy is NOT committed). Points OpenCode's build engine DIRECTLY at your OpenAI-compatible endpoint — NO proxy. Provider key here ('local') must equal OPENCODE_PROVIDER_ID in .env; the model key must equal HARNESS_MODEL.",
+  "_comment": "VERIFY against current OpenCode config docs (schema drifts). Copy to ~/.config/opencode/opencode.json (global) or <project>/.opencode/opencode.json and fill in REAL values there — that copy is NOT committed and is where your server IP / NFS model path live. Points OpenCode's build engine DIRECTLY at your OpenAI-compatible endpoint — NO proxy. Provider key ('vllm_api') must equal OPENCODE_PROVIDER_ID in .env; the model key must equal HARNESS_MODEL (vLLM served ids are often a full path with a LEADING SLASH — use it exactly). apiKey is optional for vLLM; add it under options only if your endpoint requires one.",
   "provider": {
-    "local": {
+    "vllm_api": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "Direct OpenAI-compatible endpoint (vLLM or frontier)",
+      "name": "vLLM (local)",
       "options": {
-        "baseURL": "http://<model-host>:<port>/v1",
-        "apiKey": "<key-or-not-needed>"
+        "baseURL": "http://<model-host>:<port>/v1"
       },
       "models": {
-        "<served-model-id>": { "name": "build-engine model" }
+        "<served-model-id>": { "name": "<served-model-id>" }
       }
     }
   }

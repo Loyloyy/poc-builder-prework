@@ -13,8 +13,10 @@ non-trivial work.
 3. **`/doc` is ground truth.** The OpenCode client is written from early-2026 knowledge and WILL drift.
    Reconcile against the live `GET /doc` (`scripts/verify_openapi.py`) before trusting it; when the API
    differs, fix ONLY the `EP` table + (un)wrap helpers in `harness/opencode_client.py`.
-4. **Containers always.** The build engine runs arbitrary code — every build/verify runs in a container,
-   never on the host. Phase 3 = same harness, runtime flipped to Kata.
+4. **Containers always; no host pip/venv.** The build engine runs arbitrary code — every build/verify
+   runs in a container, never on the host. The harness host itself is STDLIB-ONLY (urllib+subprocess):
+   no `pip install`, no venv — just system python3 + docker CLI. pytest/fastapi install only inside
+   containers; OpenCode is a standalone binary. Phase 3 = same harness, runtime flipped to Kata.
 5. **Scope the agent.** Use `docker/opencode-agent.md` permission frontmatter: allow edit + test/run +
    installs inside the workspace; deny writes outside it and general egress.
 6. **Cost control.** Cheap frontier tier for the loop; `HARNESS_SPEND_CAP_USD` aborts runaway runs;

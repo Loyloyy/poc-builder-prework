@@ -7,8 +7,10 @@
 traces/*.json
 # OpenAPI spec fetched from the live OpenCode server on-prem (ground truth, host-specific)
 docs/openapi.json
-# OpenCode local state / auth if it lands in-tree
+# OpenCode local state / auth / real provider config (has the server IP + NFS model path).
+# The committed template is docker/opencode.example.json; a real opencode.json is NEVER tracked.
 .opencode/
+opencode.json
 opencode.json.local
 
 # ---- python ----

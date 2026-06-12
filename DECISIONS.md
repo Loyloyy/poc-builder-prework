@@ -48,6 +48,15 @@ tokens, cost; plus `final_status` + `iterations_to_pass`). This is what Phase 4 
 Hermes' expected trace input to answer the trace-adapter question. `green` + `iterations_to_pass`
 doubles as a natural reward signal.
 
+## D9 — Stdlib-only harness host: no pip, no venv (user ruling 2026-06-12)
+The user wants nothing installed on the host (no pip/venv) — only docker/kata. The single host-side
+dependency was `httpx` in the OpenCode client; replaced with stdlib `urllib`. Result: the harness runs
+on bare `python3` + the `docker` CLI, zero installs. pytest installs only in the workspace image,
+fastapi only inside the container (agent), OpenCode is a standalone binary. Fully containerizing the
+harness ITSELF is possible (orchestrator container + mounted docker.sock) but adds a docker.sock +
+host-path-mapping wrinkle for the bind-mounted workspaces; deferred since the host now needs no
+packages anyway. `pyproject.toml` runtime deps = [] accordingly.
+
 ## D8 — Turn-completion detection is polling, not SSE
 `opencode_client._await_turn` polls the message list and treats "new assistant message with usage /
 finish signal" as done. Rationale: most version-robust across OpenCode builds. If the live `/doc`

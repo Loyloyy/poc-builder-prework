@@ -25,14 +25,18 @@ throwaway workspace root (default `~/stage3-prework/workspaces`).
 
 ## Setup (on the server)
 
+No `pip install` and no venv. The harness host is **stdlib-only** (`urllib` + `subprocess`) — it
+needs just the system `python3` and the `docker` CLI. Everything else installs inside containers
+(pytest in the workspace image; fastapi by the agent). OpenCode is a standalone binary, not pip.
+
 ```bash
 cp .env.example .env      # fill in model endpoint base/key, served model id, OpenCode password, caps
-python -m pip install -e .              # httpx for the client (host side)
 docker build -t poc-prework-workspace:latest -f docker/Dockerfile.workspace docker/
 
-# Point OpenCode's build engine DIRECTLY at your model endpoint (no proxy):
+# Point OpenCode's build engine DIRECTLY at your model endpoint (no proxy). The REAL file holds
+# your server IP + NFS model path, so it lives OUTSIDE the repo and is never committed:
 mkdir -p ~/.config/opencode
-cp docker/opencode.example.json ~/.config/opencode/opencode.json   # then edit baseURL/apiKey/model
+cp docker/opencode.example.json ~/.config/opencode/opencode.json   # then edit baseURL + model id
 ```
 
 ## Phase map

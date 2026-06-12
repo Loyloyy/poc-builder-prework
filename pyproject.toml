@@ -3,20 +3,16 @@ name = "poc-builder-prework"
 version = "0.1.0"
 description = "Stage-3 pre-work: validate OpenCode-as-build-engine + a build/verify/repair harness in isolation."
 requires-python = ">=3.11"   # server runtime; the local authoring box is 3.10 and does NOT run this
-dependencies = [
-    "httpx>=0.27",           # OpenCode OpenAPI client + model-endpoint smoke test
-]
+# RUNTIME DEPS: NONE. The harness host is stdlib-only (urllib + subprocess), so it needs no
+# pip install and no venv — just system python3 + the docker CLI. There is nothing to `pip install`.
+dependencies = []
 
 [project.optional-dependencies]
-# Installed INSIDE the workspace container for Task T2's verification, not on the harness host.
-t2 = [
-    "fastapi>=0.110",
-    "httpx>=0.27",           # fastapi TestClient transport
-]
-dev = [
-    "pytest>=8",
-    "ruff>=0.5",
-]
+# FYI only — these are installed INSIDE containers, never on the host:
+#   t2  -> the agent installs these in the workspace container for Task T2's test.
+#   dev -> ruff/pytest for editing this repo (optional; run them in a container too if you like).
+t2 = ["fastapi>=0.110", "httpx>=0.27"]
+dev = ["pytest>=8", "ruff>=0.5"]
 
 [tool.ruff]
 line-length = 100

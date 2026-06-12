@@ -15,10 +15,14 @@
 
 from __future__ import annotations
 
+import json as _json
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 
-import httpx
+# Stdlib-only on purpose: the harness host needs ZERO pip installs (no httpx, no venv).
+# Only system python3 + the docker CLI are required on the host.
 
 
 # ---------------------------------------------------------------------------
@@ -50,22 +54,21 @@ class OpenCodeClient:
 
     def __init__(self, base_url: str, password: str, provider_id: str, model: str,
                  timeout_s: float = 300.0):
+        self._base = base_url.rstrip("/")
         self._provider_id = provider_id
         self._model = model
-        self._http = httpx.Client(
-            base_url=base_url.rstrip("/"),
-            timeout=timeout_s,
-            headers={
-                # VERIFY: header name/scheme for OPENCODE_SERVER_PASSWORD against /doc.
-                # We send both common variants; harmless if one is ignored.
-                "Authorization": f"Bearer {password}",
-                "x-opencode-password": password,
-            },
-        )
+        self._timeout = timeout_s
+        # VERIFY: header name/scheme for OPENCODE_SERVER_PASSWORD against /doc. We send both
+        # common variants; harmless if one is ignored.
+        self._headers = {
+            "Authorization": f"Bearer {password}",
+            "x-opencode-password": password,
+            "Content-Type": "application/json",
+        }
 
     # ---- lifecycle -------------------------------------------------------
     def close(self) -> None:
-        self._http.close()
+        pass  # urllib opens per-request; nothing to close
 
     def __enter__(self) -> "OpenCodeClient":
         return self
@@ -73,18 +76,26 @@ class OpenCodeClient:
     def __exit__(self, *exc) -> None:
         self.close()
 
-    # ---- low-level -------------------------------------------------------
+    # ---- low-level (stdlib urllib; no third-party deps) ------------------
+    def _request(self, method: str, path: str, body: dict | None = None) -> dict | list:
+        data = _json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(self._base + path, data=data, method=method,
+                                     headers=self._headers)
+        try:
+            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+                raw = resp.read()
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode(errors="replace")[:500]
+            raise OpenCodeError(f"{method} {path} -> {e.code}: {detail}")
+        except urllib.error.URLError as e:
+            raise OpenCodeError(f"{method} {path} -> connection error: {e.reason}")
+        return _json.loads(raw) if raw else {}
+
     def _post(self, path: str, json: dict | None = None) -> dict:
-        r = self._http.post(path, json=json or {})
-        if r.status_code >= 400:
-            raise OpenCodeError(f"POST {path} -> {r.status_code}: {r.text[:500]}")
-        return r.json() if r.content else {}
+        return self._request("POST", path, json or {})  # type: ignore[return-value]
 
     def _get(self, path: str) -> dict | list:
-        r = self._http.get(path)
-        if r.status_code >= 400:
-            raise OpenCodeError(f"GET {path} -> {r.status_code}: {r.text[:500]}")
-        return r.json()
+        return self._request("GET", path)
 
     # ---- ops the harness relies on --------------------------------------
     def health(self) -> dict:
