@@ -37,10 +37,10 @@ command -v opencode >/dev/null || echo "  opencode not found — install it, the
 opencode --version || true
 
 echo "== 2. Start headless server (background) =="
-: "${OPENCODE_SERVER_PASSWORD:?set OPENCODE_SERVER_PASSWORD in .env}"
+# A loopback server needs NO password (default bind is 127.0.0.1). Only export one if you set it.
 # VERIFY the flag names: `opencode serve --help`. Some builds use --hostname/--port.
-OPENCODE_SERVER_PASSWORD="$OPENCODE_SERVER_PASSWORD" \
-  opencode serve --port "$OPENCODE_PORT" >/tmp/opencode-serve.log 2>&1 &
+[[ -n "${OPENCODE_SERVER_PASSWORD:-}" ]] && export OPENCODE_SERVER_PASSWORD
+opencode serve --port "$OPENCODE_PORT" >/tmp/opencode-serve.log 2>&1 &
 SERVE_PID=$!
 echo "  serve pid=$SERVE_PID (log: /tmp/opencode-serve.log)"
 sleep 3

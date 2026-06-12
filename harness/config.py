@@ -76,7 +76,7 @@ def load_config() -> Config:
         opencode_provider_id=os.environ.get("OPENCODE_PROVIDER_ID", "vllm_api").strip(),
         opencode_host=os.environ.get("OPENCODE_HOST", "127.0.0.1").strip(),
         opencode_port=int(os.environ.get("OPENCODE_PORT", "4096")),
-        opencode_password=_req("OPENCODE_SERVER_PASSWORD"),
+        opencode_password=os.environ.get("OPENCODE_SERVER_PASSWORD", "").strip(),
         max_iters=int(os.environ.get("HARNESS_MAX_ITERS", "4")),
         spend_cap_usd=float(os.environ.get("HARNESS_SPEND_CAP_USD", "2.00")),
         runtime=runtime,

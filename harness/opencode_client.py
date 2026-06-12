@@ -58,13 +58,13 @@ class OpenCodeClient:
         self._provider_id = provider_id
         self._model = model
         self._timeout = timeout_s
-        # VERIFY: header name/scheme for OPENCODE_SERVER_PASSWORD against /doc. We send both
-        # common variants; harmless if one is ignored.
-        self._headers = {
-            "Authorization": f"Bearer {password}",
-            "x-opencode-password": password,
-            "Content-Type": "application/json",
-        }
+        # A normal loopback `opencode serve` needs NO auth, so headers carry no password unless
+        # you set one (only relevant if you bound the server to a non-loopback address). If you
+        # do, VERIFY the scheme against /doc — these two variants are a guess.
+        self._headers = {"Content-Type": "application/json"}
+        if password:
+            self._headers["Authorization"] = f"Bearer {password}"
+            self._headers["x-opencode-password"] = password
 
     # ---- lifecycle -------------------------------------------------------
     def close(self) -> None:
