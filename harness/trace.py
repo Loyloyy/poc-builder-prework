@@ -66,3 +66,37 @@ class RunTrace:
         out = traces_dir / f"{self.task}_{self.runtime}_{stamp}.json"
         out.write_text(json.dumps(asdict(self), indent=2))
         return out
+
+
+@dataclass
+class OrchestrationTrace:
+    """Trace for the OUTER loop: a plan + the build/repair iterations + the integration and
+    runnable gates. Reuses IterationTrace for each build step."""
+    goal: str
+    model: str
+    runtime: str
+    started_at: float = field(default_factory=time.time)
+    plan: list = field(default_factory=list)            # [{name, description}] from the architect
+    iterations: list[IterationTrace] = field(default_factory=list)
+    integration_ok: bool = False                        # full acceptance suite green
+    iterations_to_integration: int | None = None
+    runnable_ok: bool = False                            # app actually launches + serves
+    runnable_detail: str = ""
+    final_status: str = "unknown"                       # done | not_done | error
+    error: str = ""
+    total_wall_s: float = 0.0
+
+    def add(self, it: IterationTrace) -> None:
+        self.iterations.append(it)
+
+    def finalize(self, status: str, error: str = "") -> None:
+        self.final_status = status
+        self.error = error
+        self.total_wall_s = round(sum(i.wall_s for i in self.iterations), 3)
+
+    def save(self, traces_dir: Path) -> Path:
+        traces_dir.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime("%Y%m%dT%H%M%S", time.gmtime(self.started_at))
+        out = traces_dir / f"goal_{self.goal}_{self.runtime}_{stamp}.json"
+        out.write_text(json.dumps(asdict(self), indent=2))
+        return out

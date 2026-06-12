@@ -69,6 +69,25 @@ The harness copies a task fixture into a fresh host directory under `HARNESS_WOR
   can't match the exact wording → the repair loop **deterministically** fires and recovers in iter 2.
   `--task repair`
 
+## Outer loop (orchestration) — `harness/orchestrator.py`
+
+The single-task harness above proves the **inner** loop. The **outer** loop is the poc-foundry
+nucleus: take a GOAL, plan it, build increments, and verify the result actually *runs*.
+
+```bash
+python3 -m harness.orchestrator --goal notes_api [--runtime kata]
+```
+
+Phases — all deterministic Python; the LLM only acts *inside* a step:
+1. **Plan** — the architect (a direct model call, `model_client.py`) decomposes the goal into increments.
+2. **Build** — each increment is built by the coder (OpenCode), gated on the FULL acceptance suite.
+3. **Repair** — on failure, feed the error back, up to the iteration cap.
+4. **Integration gate** — the whole acceptance suite must be green.
+5. **Runnable gate** — the harness actually launches the app (`uvicorn app:app`) and probes it, proving
+   it *serves* (not just that `TestClient` can import it); a launch failure drives a repair.
+
+Goals live in `goals/<name>/`: `GOAL.md` + acceptance tests + `run.json` (`stub`/`test`/`launch`/`probe`).
+
 ## Output
 
 - **Traces:** one JSON per run under `traces/` (`harness/trace.py` schema) — machine-readable, the

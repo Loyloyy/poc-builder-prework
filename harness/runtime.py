@@ -98,6 +98,32 @@ class Workspace:
         OUTSIDE /work, so the agent never sees them via the bind mount."""
         _run(["docker", "cp", host_path, f"{self.name}:{container_path}"], check=True)
 
+    def launch_and_probe(self, launch_cmd: str, probe_url: str, expect_status: int = 200,
+                         startup_s: int = 8, timeout_s: int = 120) -> ExecResult:
+        """RUNNABLE gate: start the app as a real server in the container, poll the probe URL until
+        it returns expect_status (or startup_s elapses), then kill it. Proves the POC actually
+        LAUNCHES (not just that TestClient can import it). Probe uses python stdlib — no curl needed.
+        rc 0 = served; rc != 0 = failed to start/serve (stdout carries the app log for repair)."""
+        probe = ("python -c \"import urllib.request,sys; "
+                 f"r=urllib.request.urlopen('{probe_url}',timeout=2); "
+                 f"sys.exit(0 if r.status=={expect_status} else 1)\"")
+        script = (
+            "set +e\n"
+            f"{launch_cmd} > /tmp/app.log 2>&1 &\n"
+            "APP_PID=$!\n"
+            "ok=0\n"
+            f"for i in $(seq 1 {startup_s * 2}); do\n"
+            f"  if {probe} 2>/dev/null; then ok=1; break; fi\n"
+            "  sleep 0.5\n"
+            "done\n"
+            "kill $APP_PID 2>/dev/null\n"
+            "if [ \"$ok\" != \"1\" ]; then "
+            "echo '--- RUNNABLE GATE: probe never succeeded ---'; "
+            "echo '--- app log ---'; tail -n 40 /tmp/app.log; exit 1; fi\n"
+            "echo 'RUNNABLE GATE: OK'\n"
+        )
+        return self.exec(script, timeout_s=timeout_s)
+
 
 def _run(cmd: list[str], check: bool, timeout_s: int = 600) -> ExecResult:
     try:

@@ -1,0 +1,7 @@
+{
+  "stub": "app.py",
+  "test": "test_notes.py",
+  "launch": "uvicorn app:app --host 127.0.0.1 --port 8000",
+  "probe": "http://127.0.0.1:8000/health",
+  "expect_status": 200
+}

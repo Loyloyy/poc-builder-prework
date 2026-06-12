@@ -1,0 +1,5 @@
+# Installed by the harness in the sandbox before the acceptance suite runs.
+# uvicorn is included so the RUNNABLE gate can launch the app as a real server.
+fastapi
+httpx
+uvicorn

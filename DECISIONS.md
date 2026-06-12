@@ -55,6 +55,17 @@ tokens, cost; plus `final_status` + `iterations_to_pass`). This is what Phase 4 
 Hermes' expected trace input to answer the trace-adapter question. `green` + `iterations_to_pass`
 doubles as a natural reward signal.
 
+## D11 — Minimal OUTER orchestration loop (2026-06-12, after the one-shot finding)
+Single-component build is solved by the model (5/5 one-shot), so the harness's value is ORCHESTRATION.
+Built `harness/orchestrator.py`: GOAL → architect plans increments (one direct model call,
+`model_client.py`, separate from the coder) → build each increment via OpenCode gated on the FULL
+acceptance suite → repair → integration gate → RUNNABLE gate (`runtime.Workspace.launch_and_probe`
+actually launches the app + probes it, proving it serves, not just imports) → verdict. Orchestration
+is deterministic Python; the LLM only acts inside a step. Goals live in `goals/<name>/` (GOAL.md +
+acceptance tests + run.json). This is the scoped nucleus of poc-foundry's deterministic outer harness;
+the architect/coder split mirrors its roles. Inner-loop helpers (`_snapshot`, repair prompt, AGENT_TOOLS)
+are reused from `harness.py`.
+
 ## D10 — Harness-managed sandbox env for T2 (user ruling 2026-06-12, post-T1-green)
 OpenCode's bash runs on the SERVE HOST, not our container, so the agent does NOT execute anything.
 Clean split (and matches the poc-foundry broker model): the **agent only edits files** (incl.

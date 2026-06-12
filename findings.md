@@ -40,6 +40,8 @@ the scaffold (versions, commands, API paths, model strings).
 | t1     | GLM (open) | docker  | 1             | TBD          | 44.8           | 7585 / 17       | 0.00     |
 | t2     | GLM (open) | docker  | 1             | TBD          | 18.2           | 7525 / 112      | 0.00     |
 | repair | GLM (open) | docker  | 2             | TBD          | 10.2           | 13764 / 76      | 0.00     |
+| calc   | GLM (open) | docker  | 1             | —            | 86.9           | 8714 / 17*      | 0.00     |
+| urlshort | GLM (open) | docker | 1            | —            | 29.0           | 8323 / 313      | 0.00     |
 | t1     | GLM (open) | kata    | 1             | TBD          | (in trace)     | (in trace)      | 0.00     |
 | t2     | GLM (open) | kata    | 1             | TBD          | (in trace)     | (in trace)      | 0.00     |
 | repair | GLM (open) | kata    | 2             | TBD          | (in trace)     | (in trace)      | 0.00     |
@@ -48,6 +50,18 @@ the scaffold (versions, commands, API paths, model strings).
 Kata isolation evidence: guest-VM kernel `6.18.28` vs host kernel `6.8.0-124-generic` (separate
 kernels = own VM). Identical iters docker↔kata; pip egress works from inside the VM; `docker cp`
 (hidden-test inject) works into a Kata container.
+
+\* **Token counts are unreliable** for this vLLM/GLM endpoint — OpenCode's reported
+`message.info.tokens.output` under-counts badly (e.g. calc: 17 output tokens for 87s of real work
+producing a full parser). **Use wall-clock as the cost signal**, not tokens, until this is traced.
+
+**KEY FINDING — the build engine one-shots single components.** Across 5 tasks (roman, fastapi,
+trap-laden expression evaluator, multi-endpoint URL shortener) GLM-5 reached green in **1 iteration**
+every time. The repair loop only fired on `repair`, where we deliberately HID the test. Implication:
+at single-component granularity, a strong open model + a correct harness ≈ one-shot; the harness's
+iterate/fix loop is a proven safety net but rarely needed there. The unsolved problem — and where a
+harness actually earns its keep — is ORCHESTRATION: decompose a goal → build increments → integrate →
+verify it RUNS → stay aligned to the goal. That (not single-component repair) is the next thing to build.
 
 ## Verdict
 - **OpenCode as a headless build engine — YES, it holds up.** Driven via a stdlib HTTP client
