@@ -1,0 +1,30 @@
+# The OUTER loop (LangGraph) runs INSIDE this container — the harness HOST stays stdlib-only
+# (CLAUDE.md hard rule #4: no host pip/venv). LangGraph + its deps live here, never on the host.
+#
+# How this container reaches the rest of the system (see scripts/run_orchestrator.sh):
+#   --network host        -> OpenCode on 127.0.0.1:<port> is the host's own localhost
+#   -v docker.sock        -> harness/runtime.py spawns WORKSPACE containers via the host daemon
+#   -v $WS_ROOT:$WS_ROOT  -> the workspace root is mounted at the SAME absolute path inside and
+#                            out, so the bind mounts this process hands to `docker run` resolve on
+#                            the host, and OpenCode (host process) edits the very same files.
+# The repo itself is bind-mounted at /app at run time (so authored code + traces/ stay on the host
+# and no rebuild is needed to iterate on harness code).
+FROM python:3.11-slim
+
+# Docker CLIENT only (talks to the mounted host daemon socket). Client/daemon API versions
+# negotiate, so a slightly older client against the host's Docker 29.x daemon is fine.
+ARG DOCKER_CLI_VERSION=27.3.1
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+ && curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_CLI_VERSION}.tgz" \
+    | tar -xz --strip-components=1 -C /usr/local/bin docker/docker \
+ && apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* \
+ && docker --version
+
+# LangGraph drives the outer loop. UNPINNED for the first build only — per findings.md #4
+# (unpinned deps = non-reproducible), PIN THIS once the first build succeeds: read the resolved
+# version from `pip freeze | grep -i langgraph` inside the image and hardcode it here.
+RUN pip install --no-cache-dir langgraph
+
+# Code is bind-mounted here at run time; `python -m harness.orchestrator` runs from this cwd.
+WORKDIR /app
+CMD ["python", "-m", "harness.orchestrator", "--goal", "notes_api"]
